@@ -25,4 +25,5 @@ sudo apt-get update
 
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin 
 
-sudo usermod –aG docker ubuntu #default AWS ubuntu user
+sudo chmod 666 /var/run/docker.sock #This is perferred bceuase it allows other users to access the Docker commands
+sudo usermod –aG docker ubuntu # This adds only the ubuntu user to the docker group
