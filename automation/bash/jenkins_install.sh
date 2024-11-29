@@ -1,6 +1,5 @@
 #!/bin/bashpwd
 
-
 # Install OpenJDK 17 JRE Headless
 sudo apt install openjdk-17-jre-headless -y
 

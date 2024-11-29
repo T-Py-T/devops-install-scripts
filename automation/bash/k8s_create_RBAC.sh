@@ -1,3 +1,5 @@
+#!/bin/bash
+
 kubectl apply -f svc.yaml
 kubectl apply -f role.yaml
 kubectl apply -f bind.yaml
