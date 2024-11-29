@@ -11,7 +11,7 @@ pipeline {
     }
     
     stages {
-        stage('Pull Repo') { steps { git branch: 'main', credentialsId: 'git-cred', url: 'https://github.com/T-Py-T/FullStack-Blogging-App.git' } }
+        stage('Pull Repo') { steps { git branch: 'main', credentialsId: 'git-cred', url: '{repo}' } }
         
         stage('Compile') { steps {  sh  "mvn compile" } }
         
@@ -23,22 +23,22 @@ pipeline {
         
         stage('Build & Tag Docker Image') { 
             steps { script { withDockerRegistry(credentialsId: 'docker-cred', toolName: 'docker') {
-                sh "docker build -t tnt850910/bloggingapp:latest ."
+                sh "docker build -t {docker-repo} ."
             } } } }
 
-        stage('Docker Image Scan') { steps { sh "trivy image --format table -o trivy-image-report.html tnt850910/bloggingapp:latest " } }
+        stage('Docker Image Scan') { steps { sh "trivy image --format table -o trivy-image-report.html {docker-repo} " } }
         
         stage('Push Docker Image') {
             steps {script { withDockerRegistry(credentialsId: 'docker-cred', toolName: 'docker') {
-                            sh "docker push tnt850910/bloggingapp:latest" } } } }
+                            sh "docker push {docker-repo}" } } } }
                             
         stage('Deploy To Kubernetes') { steps {
-            withKubeConfig(caCertificate: '', clusterName: 'devopstesting-cluster', contextName: '', credentialsId: 'k8-cred', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://B036A951F66E987C891B96BA7B60A663.gr7.us-east-1.eks.amazonaws.com') {
+            withKubeConfig(caCertificate: '', clusterName: 'devopstesting-cluster', contextName: '', credentialsId: 'k8-cred', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: '{server}') {
                 sh "kubectl apply -f deployment-service.yml"
             } } }
         
         stage('Verify the Deployment') { steps {
-            withKubeConfig(caCertificate: '', clusterName: 'devopstesting-cluster', contextName: '', credentialsId: 'k8-cred', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://B036A951F66E987C891B96BA7B60A663.gr7.us-east-1.eks.amazonaws.com') {
+            withKubeConfig(caCertificate: '', clusterName: 'devopstesting-cluster', contextName: '', credentialsId: 'k8-cred', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: '{server}') {
                 sh "kubectl get pods -n webapps"
                 sh "kubectl get svc -n webapps"
             } } }
