@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# setup namespace for credentials
+kubectl create namespace webapps
+
 kubectl apply -f svc.yaml
 kubectl apply -f role.yaml
 kubectl apply -f bind.yaml
@@ -13,3 +16,5 @@ kubectl create secret docker-registry regcred \
     --namespace=webapps 
 
 kubectl get secrets -n webapps
+
+echo kubectl describe secret mysecretname -n webapps

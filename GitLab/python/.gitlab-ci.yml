@@ -1,0 +1,122 @@
+include:
+  # Security scans
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Jobs/Dependency-Scanning.gitlab-ci.yml
+  - template: Jobs/Secret-Detection.gitlab-ci.yml
+
+variables:
+  # Docker-related
+  #DOCKER_IMAGE: $CI_IMAGE_REPO:$CI_IMAGE_TAG
+  DOCKER_TEST_IMAGE: tnt850910/uns_example:test
+  DOCKER_STAGE_IMAGE: tnt850910/uns_example:stage
+  DOCKER_PROD_IMAGE: tnt850910/uns_example:prod
+  DOCKER_USER: $CI_DOCKER_USER
+  DOCKER_PASS: $CI_DOCKER_PASS
+
+  #Scanning Variables
+  SAST_EXCLUDED_PATHS: "spec, test, tests, tmp"
+  SAST_BANDIT_EXCLUDED_PATHS: "tests/, test-*.py"
+  SECRET_DETECTION_EXCLUDED_PATHS: "spec, test, tests, tmp"
+  DEPENDENCY_SCANNING_EXCLUDED_PATHS: "spec, test, tests, tmp" 
+
+
+stages:
+- sast
+- build
+- test
+- compile
+- push
+- deploy
+
+
+sast:
+  stage: sast
+dependency_scanning:
+  stage: sast
+.secret-analyzer:
+  stage: sast
+
+
+build testing image:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u $DOCKER_USER -p $DOCKER_PASS $DOCKER_REPO
+  script:
+    - docker build -t $DOCKER_TEST_IMAGE -f uns_example/uns_example_test.dockerfile ./uns_example
+    - docker push $DOCKER_TEST_IMAGE
+
+test:
+  stage: test
+  image: docker/compose:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull $DOCKER_TEST_IMAGE
+  script:
+    - docker-compose -f docker-compose-test.yml up -d
+   
+    - docker-compose -f docker-compose-test.yml exec -T uns_listener flake8 /app/scripts # Run flake8
+    - docker-compose -f docker-compose-test.yml exec -T uns_listener mypy /app/scripts # Run mypy for type checking (if you're using type hints)
+    #- docker-compose -f docker-compose-test.yml exec -T uns_listener pytest /app/tests # Run pytest for unit tests
+    #- docker-compose -f docker-compose-test.yml exec -T uns_listener python -m unittest -v /app/tests/test_dt_update.py
+  after_script:
+    - docker-compose -f docker-compose-test.yml down
+
+
+compile:
+  stage: compile
+  image: docker/compose:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull $DOCKER_TEST_IMAGE
+  script:
+    - docker-compose -f docker-compose-stage.yml up -d
+    # App always runs on the uns_listener container so this doesnt exit. maybe a timeout and exit?
+    #- docker-compose -f docker-compose-stage.yml exec -T uns_listenerpython /app/scripts/dt_update.py
+  after_script:
+    - docker-compose -f docker-compose-stage.yml down
+
+
+build staging image:
+  stage: push
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u $DOCKER_USER -p $DOCKER_PASS $DOCKER_REPO
+  script:
+    #- docker info
+    - docker build -t $DOCKER_STAGE_IMAGE -f uns_example/uns_example.dockerfile ./uns_example
+    #- docker images
+    - docker push $DOCKER_STAGE_IMAGE
+
+# stage:
+#   stage: stage
+#   image: $DOCKER_STAGE_IMAGE
+#   script:
+#     - pip install .
+#     # run the command here
+#   artifacts:
+#     paths:
+#       - build/*
+
+
+# deploy:
+#   stage: deploy
+#   image: $DOCKER_PROD_IMAGE
+#   script:
+#     - echo "Deploying the application..."
+#     # Add your deployment commands here
+#   only:
+#     - main  # Deploy only when changes are pushed to the main branch
+#   when: on_success  # Run this job only if all previous stages succeed
