@@ -1,0 +1,78 @@
+pipeline { 
+    agent any
+    
+    tools {
+        rust 'rust-1.70' // or your configured Rust tool name
+    }
+    
+    environment {}
+    
+    stages {
+        stage('Pull Repo') { steps { git branch: 'main', credentialsId: 'git-cred', url: '{repo}'} }
+        
+        stage('Install Dependencies') { steps { sh "cargo fetch" } }
+        
+        stage('Compile') { steps { sh "cargo build --release" } }
+        
+        stage('Test') { steps { sh "cargo test --release" } }
+        
+        stage('Trivy FS Scan') { steps { sh "trivy fs --format table -o fs.html ." } }
+        
+        stage('Build & Tag Docker Image') { 
+            steps { script { withDockerRegistry(credentialsId: 'docker-cred', toolName: 'docker') {
+                sh "docker build -t {docker-repo} ."
+            } } } 
+        }
+
+        stage('Docker Image Scan') { steps { sh "trivy image --format table -o trivy-image-report.html {docker-repo}" } }
+        
+        stage('Push Docker Image') {
+            steps { script { withDockerRegistry(credentialsId: 'docker-cred', toolName: 'docker') {
+                sh "docker push {docker-repo}"
+            } } }
+        }
+                            
+        stage('Deploy To Kubernetes') { steps {
+            withKubeConfig(caCertificate: '', clusterName: 'devopstesting-cluster', contextName: '', credentialsId: 'k8-cred', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: '{server}') {
+                sh "kubectl apply -f deployment-service.yml"
+            } } }
+        
+        stage('Verify the Deployment') { steps {
+            withKubeConfig(caCertificate: '', clusterName: 'devopstesting-cluster', contextName: '', credentialsId: 'k8-cred', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: '{server}') {
+                sh "kubectl get pods -n webapps"
+                sh "kubectl get svc -n webapps"
+            } } }
+        
+    }
+
+    post { always { script {
+            def jobName = env.JOB_NAME
+            def buildNumber = env.BUILD_NUMBER
+            def pipelineStatus = currentBuild.result ?: 'UNKNOWN'
+            def bannerColor = pipelineStatus.toUpperCase() == 'SUCCESS' ? 'green' : 'red'
+
+            def body = """
+                <html>
+                <body>
+                <div style="border: 4px solid ${bannerColor}; padding: 10px;">
+                <h2>${jobName} - Build ${buildNumber}</h2>
+                <div style="background-color: ${bannerColor}; padding: 10px;">
+                <h3 style="color: white;">Pipeline Status: ${pipelineStatus.toUpperCase()}</h3>
+                </div>
+                <p>Check the <a href="${BUILD_URL}">console output</a>.</p>
+                </div>
+                </body>
+                </html>
+            """
+
+            emailext (
+                subject: "${jobName} - Build ${buildNumber} - ${pipelineStatus.toUpperCase()}",
+                body: body,
+                to: 'tnt85091023@gmail.com',
+                from: 'jenkins@example.com',
+                replyTo: 'jenkins@example.com',
+                mimeType: 'text/html',
+                attachmentsPattern: 'trivy-image-report.html'
+            ) } } }
+
+}
